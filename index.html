@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MATA-MATA</title>
+<style>
+:root{--bg:#fff0f5;--ink:#2a0a1a;--pink:#ff2e88;--mute:#8a5a72;--line:#f3c6da;--dead:#b9a3ae;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14040c;--ink:#ffe6f1;--mute:#c48aa6;--line:#4a1630;--dead:#6a5060;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14040c;--ink:#ffe6f1;--mute:#c48aa6;--line:#4a1630;--dead:#6a5060;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Trebuchet MS",system-ui,sans-serif;padding:18px;max-width:560px;margin-inline:auto}
+h1{font-family:Impact,"Arial Black",sans-serif;font-size:clamp(44px,14vw,80px);margin:6px 0 0;text-align:center;letter-spacing:2px;color:var(--pink)}
+.sub{text-align:center;color:var(--mute);margin:4px 0 22px;font-size:14px}
+h2{font-family:Impact,sans-serif;letter-spacing:1px;font-weight:400;margin:22px 0 10px;font-size:22px}
+p{line-height:1.4}
+.btn{background:var(--pink);color:#fff;border:0;border-radius:999px;padding:14px 20px;font-weight:700;font-size:16px;cursor:pointer;width:100%;margin-top:14px}
+.btn.ghost{background:transparent;color:var(--mute);border:1px solid var(--line)}
+.btn:disabled{opacity:.35}
+input[type=text]{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);font-size:16px;margin-top:8px}
+.step{display:flex;align-items:center;justify-content:center;gap:22px;margin:10px 0}
+.step button{width:48px;height:48px;border-radius:50%;border:2px solid var(--pink);background:transparent;color:var(--pink);font-size:26px;cursor:pointer}
+.step b{font-size:44px;min-width:60px;text-align:center}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:2px solid var(--line);background:transparent;color:var(--ink);padding:10px 14px;border-radius:999px;font-size:15px;cursor:pointer;text-transform:lowercase}
+.chip.on{border-color:var(--pink);background:var(--pink);color:#fff}
+.chip.dead{border-color:var(--line);color:var(--dead);text-decoration:line-through}
+.chip.kill{border-color:var(--pink)}
+.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);font-size:18px;text-transform:uppercase;font-weight:700}
+.row.out{color:var(--dead);text-decoration:line-through}
+.big{font-size:26px;text-align:center;margin:30px 0 10px;font-family:Impact,sans-serif}
+#log{text-align:center;color:var(--mute);font-size:14px;min-height:22px;margin-top:14px}
+.add{display:flex;gap:8px;margin-top:12px}.add input{margin:0}.add .btn{width:auto;margin:0;padding:0 18px}
+</style>
+</head>
+<body>
+<h1>MATA-MATA</h1>
+<div id="app"></div>
+<script>
+var POOL0=[];
+var S=null,tmp=null,rs=0,msg="";
+try{S=JSON.parse(localStorage.getItem("matamata3")||"null")}catch(e){}
+function save(){try{localStorage.setItem("matamata3",JSON.stringify(S))}catch(e){}}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+var $=function(h){document.getElementById("app").innerHTML=h};
+function hearts(n){return n>0?new Array(n+1).join("❤️"):"⚰️"}
+
+function setup(){
+  var n=(tmp&&tmp.n)||6,names=(tmp&&tmp.names)||[];
+  var h='<p class="sub">quantas pessoas vão jogar?</p><div class="step"><button data-a="m">−</button><b>'+n+'</b><button data-a="p">+</button></div>';
+  for(var i=0;i<n;i++)h+='<input type="text" maxlength="20" placeholder="nome '+(i+1)+'" value="'+esc(names[i]||"")+'" data-n="'+i+'">';
+  h+='<button class="btn" data-a="go">continuar</button>';
+  tmp={n:n,names:names};$(h);
+}
+function pickScreen(){
+  var p=S.p[S.cur];
+  if(!tmp.ready){
+    $('<h2>passa o celular pra</h2><div class="big" style="font-size:44px;color:var(--pink)">'+esc(p.n)+'</div><p class="sub">ninguém mais olha 👀</p><button class="btn" data-a="ready">sou eu</button><button class="btn ghost" data-a="new">recomeçar do início</button>');
+    return;
+  }
+  var v=tmp.v||[],h='<h2>'+esc(p.n)+', escreve 3</h2><p class="sub">'+(tmp.err===2?'já foi escolhido por outra pessoa: '+esc(tmp.taken.join(', '))+' · troca':tmp.err?'preenche as 3, sem repetir':'só você vê isso · não pode repetir o que outro já escolheu')+'</p>';
+  for(var k=0;k<3;k++)h+='<input type="text" id="p'+k+'" maxlength="40" autocomplete="off" placeholder="escolha '+(k+1)+'" value="'+esc(v[k]||"")+'">';
+  h+='<button class="btn" data-a="done">'+(S.cur<S.p.length-1?'pronto, esconder':'pronto, começar')+'</button><button class="btn ghost" data-a="new">recomeçar do início</button>';
+  $(h);
+}
+function podium(){
+  var al=[];S.p.forEach(function(p,i){if(p.h>0)al.push(i)});
+  var gs=(al.length?[al]:[]).concat((S.elim||[]).slice().reverse());
+  var h='<h2>pódio</h2>',pos=1,m=['🥇','🥈','🥉'];
+  gs.forEach(function(g){if(pos<=3){h+='<div class="row"><span>'+m[pos-1]+' '+pos+'º</span><span>'+g.map(function(i){return esc(S.p[i].n)}).join(' · ')+'</span></div>'}pos+=g.length});
+  return h+'<h2>todos</h2>';
+}
+function game(){
+  var alive=S.p.filter(function(p){return p.h>0});
+  var h='';
+  if(alive.length<=1){h+='<div class="big">'+(alive.length?'🏆 '+esc(alive[0].n)+' venceu':'ninguém sobrou ⚰️')+'</div>'}
+  if(alive.length<=1)h+=podium();
+  S.p.forEach(function(p){h+='<div class="row'+(p.h<=0?' out':'')+'"><span>'+esc(p.n)+'</span><span>'+hearts(p.h)+'</span></div>'});
+  h+='<h2>toque para matar</h2><div class="chips">';
+  S.pool.forEach(function(t,i){h+='<button class="chip'+(S.dead[i]?' dead':' kill')+'" '+(S.dead[i]?'disabled':'data-a="kill" data-i="'+i+'"')+'>'+esc(t)+(S.dead[i]?' ⚰️':'')+'</button>'});
+  h+='</div><div id="log">'+esc(msg)+'</div>';
+  h+='<button class="btn ghost" data-a="undo"'+(S.last?'':' disabled')+'>desfazer última morte</button>';
+  h+='<button class="btn ghost" data-a="new">'+(rs?'toque de novo para confirmar':'novo jogo')+'</button>';
+  $(h);
+}
+function render(){if(S&&S.phase==="pick"&&!tmp)tmp={};if(!S||S.phase==="setup")setup();else if(S.phase==="pick")pickScreen();else game()}
+
+document.addEventListener("input",function(e){var n=e.target.dataset&&e.target.dataset.n;if(n!==undefined&&tmp)tmp.names[+n]=e.target.value});
+document.addEventListener("click",function(e){
+  var b=e.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,i=+b.dataset.i;
+  if(a==="p"&&tmp.n<14){tmp.n++;setup()}
+  else if(a==="m"&&tmp.n>2){tmp.n--;setup()}
+  else if(a==="go"){
+    var ps=[];for(var k=0;k<tmp.n;k++)ps.push({n:(tmp.names[k]||"").trim()||("jogador "+(k+1)),h:3,pk:[]});
+    S={phase:"pick",cur:0,p:ps,pool:POOL0.slice(),dead:{},last:null};tmp={};save();render();
+  }
+  else if(a==="ready"){tmp.ready=1;render()}
+  else if(a==="done"){
+    var v=[0,1,2].map(function(k){return document.getElementById("p"+k).value.trim().toLowerCase()});
+    if(v.some(function(x){return!x})||new Set(v).size<3){tmp.err=1;tmp.v=v;render();return}
+    var tk=v.filter(function(t){return S.pool.indexOf(t)>-1});
+    if(tk.length){tmp.err=2;tmp.taken=tk;tmp.v=v;render();return}
+    S.p[S.cur].pk=v.map(function(t){var j=S.pool.indexOf(t);if(j<0){S.pool.push(t);j=S.pool.length-1}return j});
+    tmp={};
+    if(S.cur<S.p.length-1)S.cur++;
+    else{S.phase="game";var old=S.pool.slice(),np=old.slice().sort();S.p.forEach(function(p){p.pk=p.pk.map(function(i){return np.indexOf(old[i])})});S.pool=np}
+    save();render();window.scrollTo(0,0);
+  }
+  else if(a==="kill"){
+    var hit=0;S.dead[i]=1;S.last={t:i,who:[],out:[]};
+    S.p.forEach(function(p,pi){if(p.h>0&&p.pk.indexOf(i)>-1){p.h--;hit++;S.last.who.push(pi);if(p.h===0)S.last.out.push(pi)}});if(S.last.out.length){S.elim=S.elim||[];S.elim.push(S.last.out)}
+    msg=S.pool[i]+" morreu · "+(hit?hit+(hit>1?" pessoas perderam ❤️":" pessoa perdeu ❤️"):"ninguém perdeu ❤️");
+    save();render();
+  }
+  else if(a==="undo"&&S.last){
+    S.last.who.forEach(function(pi){S.p[pi].h++});if(S.last.out&&S.last.out.length&&S.elim)S.elim.pop();delete S.dead[S.last.t];msg=S.pool[S.last.t]+" ressuscitou";S.last=null;save();render();
+  }
+  else if(a==="new"){
+    if(!rs&&S.phase==="game"){rs=1;render();setTimeout(function(){rs=0;if(S&&S.phase==="game")render()},4000);return}
+    rs=0;S=null;tmp=null;msg="";try{localStorage.removeItem("matamata3")}catch(x){}render();
+  }
+});
+render();
+</script>
+</body>
+</html>
