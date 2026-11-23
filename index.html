@@ -334,7 +334,7 @@ $("#download").onclick=async()=>{
   const target=S.mode==="gif"?$("#stage"):$("#phone");
   const btn=$("#download");
   if(!window.html2canvas){alert("Não foi possível carregar a ferramenta de gravação. Confira sua conexão e tente novamente.");return}
-  if(!target.captureStream || !window.MediaRecorder){alert("Seu navegador não oferece suporte à gravação de vídeo nesta página. Tente abrir no Safari ou Chrome atualizado.");return}
+  if(!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream){alert("Seu navegador não oferece suporte à gravação de vídeo nesta página. Abra no Safari atualizado e tente novamente.");return}
   const mime=["video/mp4;codecs=h264","video/mp4"].find(x=>MediaRecorder.isTypeSupported(x));
   if(!mime){alert("Este navegador não consegue exportar MP4 diretamente. Tente abrir o arquivo em um navegador atualizado que ofereça gravação MP4.");return}
   btn.disabled=true;btn.textContent="Gravando vídeo...";
