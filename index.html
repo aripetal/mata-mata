@@ -51,6 +51,7 @@ label.l{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
 #lrc{max-height:230px;overflow:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:6px}
 .lv{text-align:left;font-weight:500}
 .lv[aria-pressed="true"]{border-color:var(--acc);font-weight:800}
+#ost,#yurl{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:transparent}
 @media(prefers-reduced-motion:reduce){#lines p{transition:none}}
 </style></head>
 <body><main class="wrap">
@@ -59,6 +60,7 @@ label.l{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
     <div class="card"><div id="lines"></div>
       <div class="meta"><div class="art" id="art"></div><div><b id="mt"></b><span id="ma"></span><em>Música</em></div></div>
     </div></div>
+  <div id="ytbox" hidden style="max-width:330px;margin:14px auto 0;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000"><div id="ytp"></div></div>
   <div class="player"><button id="play" class="pri">Tocar</button><input id="seek" type="range" min="0" max="10" step="0.1" value="0" aria-label="Posição"><span id="time">0:00 / 0:10</span></div>
 </section>
 <section class="side">
@@ -86,6 +88,13 @@ label.l{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
     <h2 style="margin-top:22px">Letra e sincronia</h2>
     <label class="l" style="margin-top:0" for="mp3">Trocar o áudio por um arquivo seu (opcional)</label>
     <input type="file" id="mp3" accept="audio/*"><div class="hint" id="mp3s"></div>
+    <label class="l" for="yurl">Link do YouTube da música inteira (opcional)</label>
+    <input type="text" id="yurl" placeholder="https://www.youtube.com/watch?v=...">
+    <button id="yset" style="margin-top:8px">Usar este vídeo (deixe vazio para remover)</button>
+    <div class="hint" id="ymsg" style="margin-top:6px"></div>
+    <label class="l" for="ost">Em que segundo do arquivo o trecho começa</label>
+    <input type="number" id="ost" step="0.1" min="0" placeholder="ex.: 187.5">
+    <p class="hint" style="margin-top:6px">Vale para o arquivo de áudio seu. Ao escolher os versos da letra sincronizada, ele já é preenchido; ajuste se a sua versão tiver outra duração de intro.</p>
     <button id="glyr" class="pri" style="margin-top:12px">Buscar letra sincronizada</button>
     <p class="hint" id="lmsg" style="margin-top:8px"></p>
     <div id="lrc"></div>
@@ -105,16 +114,40 @@ label.l{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
 const $=s=>document.querySelector(s);
 let S={songs:[],sel:null},playing=false,tm=0,last=0;
 const A=new Audio();
+A.onloadedmetadata=()=>{const s=cur();if(own(s))A.currentTime=off(s);paint()};
 try{const d=JSON.parse(localStorage.getItem("lc1")||"null");if(d&&d.songs)S=d}catch(e){}
-const save=()=>{try{localStorage.setItem("lc1",JSON.stringify({sel:S.sel,songs:S.songs.map(s=>({id:s.id,title:s.title,artist:s.artist,art:s.art,lyrics:s.lyrics,times:s.times,lrcId:s.lrcId,audioUrl:/^https:\/\/[^/]*apple\.com/.test(s.audioUrl||"")?s.audioUrl:undefined}))}))}catch(e){}};
+const save=()=>{try{localStorage.setItem("lc1",JSON.stringify({sel:S.sel,songs:S.songs.map(s=>({id:s.id,title:s.title,artist:s.artist,art:s.art,lyrics:s.lyrics,times:s.times,lrcId:s.lrcId,start:s.start,yt:s.yt,audioUrl:/^https:\/\/[^/]*apple\.com/.test(s.audioUrl||"")?s.audioUrl:undefined}))}))}catch(e){}};
 const PH={title:"Título da música",artist:"Artista",lyrics:"Escreva aqui o verso\nque você quer mostrar",times:[]};
 const cur=()=>S.songs.find(s=>s.id===S.sel)||null;
 const view=()=>cur()||PH;
 const linesOf=s=>(s.lyrics||"").split("\n").map(x=>x.trim()).filter(Boolean).slice(0,6);
 const hue=t=>[...t].reduce((a,c)=>a+c.charCodeAt(0),0)*7%360;
 const fmt=t=>Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0");
-const now=()=>{const s=cur();return s&&s.audioUrl?A.currentTime:tm};
-function dur(){const s=cur();if(s&&s.audioUrl&&isFinite(A.duration))return A.duration;const ts=((s&&s.times)||[]).filter(x=>typeof x==="number");return Math.max(10,(ts.length?Math.max(...ts):0)+5)}
+const own=s=>!!(s&&/^blob:/.test(s.audioUrl||""));
+const isyt=s=>!!(s&&s.yt);
+const off=s=>(own(s)||isyt(s))?(s.start||0):0;
+let P=null,ytq=null;
+const ytState=()=>P&&P.getPlayerState?P.getPlayerState():-1;
+const ytTime=()=>P&&P.getCurrentTime?P.getCurrentTime():0;
+const ytSeek=(s,t)=>{if(!P||!P.seekTo)return;const st=ytState();if(st===1||st===2)P.seekTo(t,true);else P.cueVideoById({videoId:s.yt,startSeconds:t})};
+const parseYt=x=>{x=String(x).trim();const m=x.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/)||x.match(/^([\w-]{11})$/);return m?m[1]:null};
+window.onYouTubeIframeAPIReady=()=>{if(ytq)ytq()};
+function ytApi(cb){if(window.YT&&YT.Player)return cb();ytq=cb;if(!document.getElementById("ytapi")){const s=document.createElement("script");s.id="ytapi";s.src="https://www.youtube.com/iframe_api";
+  s.onerror=()=>{$("#ymsg").textContent="Não consegui carregar o player do YouTube. Confira a conexão."};document.head.appendChild(s)}}
+function loadYt(s){const box=$("#ytbox");
+  if(!s||!s.yt){box.hidden=true;try{if(P&&P.pauseVideo)P.pauseVideo()}catch(e){}return}
+  box.hidden=false;$("#ymsg").textContent="";
+  ytApi(()=>{if(cur()!==s||!s.yt)return;
+   if(P){P.cueVideoById({videoId:s.yt,startSeconds:s.start||0});return}
+   P=new YT.Player("ytp",{width:"100%",height:"100%",playerVars:{playsinline:1,rel:0},events:{
+    onReady:()=>{const c=cur();if(c&&c.yt)P.cueVideoById({videoId:c.yt,startSeconds:c.start||0})},
+    onError:e=>{$("#ymsg").textContent=(e.data===101||e.data===150||e.data===153)?"O YouTube não deixou embutir esse vídeo. Isso acontece quando o dono bloqueia, ou quando a página é aberta direto do computador (erro "+e.data+"). Teste outro vídeo, como o clipe oficial, ou hospede a página.":"O YouTube não conseguiu tocar esse vídeo (erro "+e.data+")."}}})})}
+const now=()=>{const s=cur();return isyt(s)?Math.max(0,ytTime()-off(s)):s&&s.audioUrl?Math.max(0,A.currentTime-off(s)):tm};
+const warn=s=>s&&s.start>25&&!own(s)&&!isyt(s)?" Esse trecho fica no final da música e a prévia online tem só 30 s, então envie o arquivo da música inteira em “Trocar o áudio”.":"";
+function dur(){const s=cur(),ts=((s&&s.times)||[]).filter(x=>typeof x==="number"),last=ts.length?Math.max(...ts):0;
+  if(isyt(s))return Math.max(10,last+6);
+  if(s&&s.audioUrl&&isFinite(A.duration)){const d=A.duration-off(s);return own(s)&&ts.length?Math.max(1,Math.min(d,Math.max(10,last+6))):d}
+  return Math.max(10,last+5)}
 function fill(el,s){if(s.art)el.style.background="center/cover url("+s.art+")";else{const h=hue(s.title);el.style.background="linear-gradient(160deg,hsl("+h+" 65% 42%),hsl("+((h+60)%360)+" 60% 20%))"}}
 function drawCard(){const s=view();fill($("#bg"),s);fill($("#art"),s);$("#mt").textContent=s.title;$("#ma").textContent=s.artist||"";
   $("#lines").replaceChildren(...linesOf(s).map(t=>{const p=document.createElement("p");p.textContent=t;return p}));paint()}
@@ -123,7 +156,7 @@ function paint(){const s=view(),L=$("#lines").children,ts=s.times||[],t=now();
   ts.forEach((x,i)=>{if(typeof x==="number"&&x<=t&&i<L.length&&(a<0||x>=ts[a]))a=i});
   [...L].forEach((p,i)=>{const x=ts[i];p.className=!any?"":(typeof x!=="number"||x>t)?"wait":i===a?"on":"past"});
   const d=dur();$("#seek").max=d;$("#seek").value=t;$("#time").textContent=fmt(t)+" / "+fmt(d);$("#play").textContent=playing?"Pausar":"Tocar"}
-function tick(n){const s=cur();if(s&&s.audioUrl)playing=!A.paused;else if(playing){tm+=(n-last)/1000;if(tm>dur())tm=0}last=n;paint();requestAnimationFrame(tick)}
+function tick(n){const s=cur();if(isyt(s)){playing=ytState()===1;if(playing&&now()>dur()){P.pauseVideo();ytSeek(s,off(s));playing=false}}else if(s&&s.audioUrl){playing=!A.paused;if(playing&&own(s)&&A.currentTime-off(s)>dur()){A.pause();A.currentTime=off(s);playing=false}}else if(playing){tm+=(n-last)/1000;if(tm>dur())tm=0}last=n;paint();requestAnimationFrame(tick)}
 function renderList(){const box=$("#list");box.replaceChildren(...S.songs.map(s=>{const b=document.createElement("button");b.className="song";b.setAttribute("aria-current",s.id===S.sel);
   const a=document.createElement("div");a.className="art";fill(a,s);const d=document.createElement("div");d.innerHTML="<b></b><small></small>";d.firstChild.textContent=s.title;d.lastChild.textContent=s.artist;
   b.append(a,d);b.onclick=()=>pick(s.id);return b}))}
@@ -136,13 +169,17 @@ function renderRows(){const s=cur();if(!s)return;const box=$("#rows");s.times=s.
 function pick(id){S.sel=id;const s=cur();A.pause();playing=false;tm=0;
   if(s&&s.audioUrl)A.src=s.audioUrl;else A.removeAttribute("src");
   $("#ed").hidden=!s;$("#empty").hidden=S.songs.length>0;
-  if(s){$("#et").value=s.title;$("#ea").value=s.artist||"";$("#elid").value=s.lrcId?"https://lrclib.net/tracks/"+s.lrcId:"";$("#eart").value="";$("#lyr").value=s.lyrics||"";$("#mp3s").textContent=s.audioUrl?(/^https:/.test(s.audioUrl)?"Prévia de 30 segundos do Apple Music carregada.":"Áudio carregado."):"Sem áudio: o cartão usa um relógio simples para a prévia.";renderRows()}
-  renderList();drawCard();save()}
+  if(s){$("#et").value=s.title;$("#ea").value=s.artist||"";$("#elid").value=s.lrcId?"https://lrclib.net/tracks/"+s.lrcId:"";$("#eart").value="";$("#ost").value=s.start!=null?s.start:"";$("#yurl").value=s.yt?"https://youtu.be/"+s.yt:"";$("#lyr").value=s.lyrics||"";$("#mp3s").textContent=s.yt?"Tocando a música inteira pelo YouTube.":s.audioUrl?(/^https:/.test(s.audioUrl)?"Prévia de 30 segundos do Apple Music carregada.":"Áudio carregado."):"Sem áudio: o cartão usa um relógio simples para a prévia.";renderRows()}
+  loadYt(s);renderList();drawCard();save()}
 function jsonp(url){return new Promise((res,rej)=>{const n="jp"+Math.random().toString(36).slice(2),s=document.createElement("script");
  const end=()=>{clearTimeout(to);delete window[n];s.remove()};const to=setTimeout(()=>{end();rej(new Error("timeout"))},8000);
  window[n]=d=>{end();res(d)};s.onerror=()=>{end();rej(new Error("net"))};s.src=url+"&callback="+n;document.head.appendChild(s)})}
 function parseLrc(x){return x.split("\n").map(l=>{const m=l.match(/^\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)$/);return m&&m[3]?{t:+m[1]*60+ +m[2],x:m[3]}:null}).filter(Boolean)}
-function applyPicks(s){const P=s.picks.map(i=>s.lrc[i]);s.lyrics=P.map(p=>p.x).join("\n");s.times=P.map(p=>Math.round((1+p.t-P[0].t)*10)/10);$("#lyr").value=s.lyrics;drawCard();renderRows();save()}
+function applyPicks(s){const P=s.picks.map(i=>s.lrc[i]);
+ if(!P.length){s.lyrics="";s.times=[]}
+ else{const st=Math.max(0,Math.round((P[0].t-1)*10)/10);s.start=st;s.lyrics=P.map(p=>p.x).join("\n");s.times=P.map(p=>Math.round((p.t-st)*10)/10);if(own(s))A.currentTime=st;if(isyt(s))ytSeek(s,st)}
+ $("#ost").value=s.start!=null?s.start:"";$("#lyr").value=s.lyrics;drawCard();renderRows();save();
+ const w=warn(s);if(w)$("#lmsg").textContent="Toque nos versos que vão no cartão (até 4)."+w}
 function drawLrc(){const s=cur();if(!s||!s.lrc)return;s.picks=s.picks||[];
  $("#lrc").replaceChildren(...s.lrc.map((l,i)=>{const b=document.createElement("button");b.className="lv";b.textContent=l.x;b.setAttribute("aria-pressed",s.picks.includes(i));
   b.onclick=()=>{const k=s.picks.indexOf(i);if(k>=0)s.picks.splice(k,1);else if(s.picks.length<4)s.picks.push(i);s.picks.sort((a,b)=>a-b);applyPicks(s);drawLrc()};return b}))}
@@ -161,7 +198,7 @@ async function getLyrics(s,auto){$("#lrc").replaceChildren();$("#lmsg").textCont
   if(!h){$("#lmsg").textContent="Não achei letra sincronizada para essa música. Cole o link da faixa do lrclib acima ou digite o trecho abaixo.";return}
   s.lrc=parseLrc(h.syncedLyrics);if(cur()!==s)return;
   if(auto&&s.lrc.length){s.picks=s.lrc.slice(0,4).map((_,i)=>i);applyPicks(s)}
-  $("#lmsg").textContent=(auto?"Letra sincronizada aplicada ("+h.trackName+", "+h.artistName+"). ":"")+"Toque nos versos que vão no cartão (até 4):";drawLrc()}
+  $("#lmsg").textContent=(auto?"Letra sincronizada aplicada ("+h.trackName+", "+h.artistName+"). ":"")+"Toque nos versos que vão no cartão (até 4):"+warn(s);drawLrc()}
  catch(e){$("#lmsg").textContent="Não consegui buscar a letra. Digite o trecho abaixo."}}
 async function find(){const q=$("#nt").value.trim();if(!q){$("#nt").focus();return}
  $("#msg").textContent="Buscando…";$("#res").replaceChildren();const E=encodeURIComponent(q);
@@ -193,10 +230,14 @@ $("#add").onclick=()=>{const t=$("#nt").value.trim();if(!t){$("#nt").focus();ret
   const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const c=document.createElement("canvas"),z=360;c.width=c.height=z;const m=Math.min(im.width,im.height);
     c.getContext("2d").drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,z,z);mk(c.toDataURL("image/jpeg",.8))};im.src=r.result};r.readAsDataURL(f)};
 $("#lyr").oninput=e=>{const s=cur();if(!s)return;s.lyrics=e.target.value;drawCard();renderRows();save()};
-$("#mp3").onchange=e=>{const s=cur(),f=e.target.files[0];if(!s||!f)return;s.audioUrl=URL.createObjectURL(f);A.src=s.audioUrl;tm=0;$("#mp3s").textContent="Áudio carregado: "+f.name;paint()};
+$("#mp3").onchange=e=>{const s=cur(),f=e.target.files[0];if(!s||!f)return;s.audioUrl=URL.createObjectURL(f);A.src=s.audioUrl;tm=0;s.yt=undefined;$("#yurl").value="";loadYt(s);$("#mp3s").textContent="Áudio carregado: "+f.name+(s.start?" — o cartão começa em "+fmt(s.start)+" do arquivo.":"");$("#lmsg").textContent="";paint()};
+$("#yset").onclick=()=>{const s=cur();if(!s)return;const raw=$("#yurl").value.trim(),id=raw?parseYt(raw):null;
+ if(raw&&!id){$("#ymsg").textContent="Não reconheci esse link do YouTube.";$("#yurl").focus();return}
+ s.yt=id||undefined;pick(s.id);$("#ymsg").textContent=id?"Vídeo definido. Toque em Tocar; ele começa no segundo do trecho.":"Vídeo removido."};
+$("#ost").oninput=e=>{const s=cur();if(!s)return;s.start=e.target.value===""?undefined:Math.max(0,+e.target.value||0);if(own(s))A.currentTime=s.start||0;if(isyt(s))ytSeek(s,s.start||0);save();paint()};
 $("#del").onclick=()=>{const s=cur();if(!s)return;S.songs=S.songs.filter(x=>x.id!==s.id);pick(S.songs.length?S.songs[0].id:null)};
-$("#play").onclick=()=>{const s=cur();if(s&&s.audioUrl){A.paused?A.play():A.pause();playing=!A.paused}else{playing=!playing;last=performance.now()}paint()};
-$("#seek").oninput=e=>{const v=+e.target.value,s=cur();if(s&&s.audioUrl)A.currentTime=v;else tm=v;paint()};
+$("#play").onclick=()=>{const s=cur();if(isyt(s)){if(!P||!P.playVideo){$("#ymsg").textContent="O player do YouTube ainda está carregando.";return}if(ytState()===1)P.pauseVideo();else{if(now()>=dur())ytSeek(s,off(s));P.playVideo()}}else if(s&&s.audioUrl){if(A.paused){if(own(s)&&(A.currentTime<off(s)||A.currentTime-off(s)>=dur()))A.currentTime=off(s);A.play()}else A.pause();playing=!A.paused}else{playing=!playing;last=performance.now()}paint()};
+$("#seek").oninput=e=>{const v=+e.target.value,s=cur();if(isyt(s))ytSeek(s,v+off(s));else if(s&&s.audioUrl)A.currentTime=v+off(s);else tm=v;paint()};
 if(!S.songs.find(s=>s.id===S.sel))S.sel=S.songs.length?S.songs[0].id:null;
 pick(S.sel);requestAnimationFrame(tick);
 </script></body></html>
