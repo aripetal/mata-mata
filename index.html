@@ -48,6 +48,9 @@ label.l{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
 .row{display:grid;grid-template-columns:1fr 84px auto;gap:8px;align-items:center;margin-bottom:8px}
 .row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hint{color:var(--mut);font-size:13px;margin:0 0 10px}
+#lrc{max-height:230px;overflow:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:6px}
+.lv{text-align:left;font-weight:500}
+.lv[aria-pressed="true"]{border-color:var(--acc);font-weight:800}
 @media(prefers-reduced-motion:reduce){#lines p{transition:none}}
 </style></head>
 <body><main class="wrap">
@@ -63,22 +66,34 @@ label.l{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
     <div class="songs" id="list"></div>
     <div class="f">
       <input type="text" id="nt" class="full" placeholder="Digite o título da música" aria-label="Título">
-      <button class="pri full" id="find">Buscar no Apple Music</button>
+      <button class="pri full" id="find">Buscar música</button>
     </div>
-    <p class="hint" id="msg" style="margin-top:10px"></p>
+    <p class="hint" id="msg" style="margin-top:10px">Busca no Apple Music e no Deezer ao mesmo tempo.</p>
     <div class="songs" id="res"></div>
     <details><summary class="hint">Adicionar manualmente</summary><div class="f">
       <input type="text" id="na" placeholder="Artista" aria-label="Artista">
       <div class="full"><label class="l" style="margin-top:0">Capa do álbum (opcional)</label><input type="file" id="nart" accept="image/*"></div>
       <button class="full" id="add">Adicionar com o título acima</button></div></details>
   </div>
-  <div class="box" id="ed" hidden><h2>Letra e sincronia</h2>
+  <div class="box" id="ed" hidden><h2>Editar música</h2>
+    <div class="f">
+      <input type="text" id="et" class="full" placeholder="Título" aria-label="Título da música">
+      <input type="text" id="ea" class="full" placeholder="Artista" aria-label="Artista da música">
+      <div class="full"><label class="l" style="margin-top:0" for="eart">Trocar a capa (opcional)</label><input type="file" id="eart" accept="image/*"></div>
+      <input type="text" id="elid" class="full" placeholder="Link do lrclib, ex.: https://lrclib.net/tracks/37789459" aria-label="Link ou ID da faixa no lrclib">
+      <button class="pri full" id="done">Concluir edição e sincronizar letra</button>
+    </div>
+    <h2 style="margin-top:22px">Letra e sincronia</h2>
     <label class="l" style="margin-top:0" for="mp3">Trocar o áudio por um arquivo seu (opcional)</label>
     <input type="file" id="mp3" accept="audio/*"><div class="hint" id="mp3s"></div>
+    <button id="glyr" class="pri" style="margin-top:12px">Buscar letra sincronizada</button>
+    <p class="hint" id="lmsg" style="margin-top:8px"></p>
+    <div id="lrc"></div>
     <label class="l" for="lyr">Trecho da letra (um verso por linha, até 6)</label>
     <textarea id="lyr" placeholder="Digite o trecho que você quer mostrar"></textarea>
     <label class="l">Tempo de cada verso em segundos</label>
-    <p class="hint">Toque a música, e no momento certo aperte Marcar no verso.</p>
+    <p class="hint">Toque a prévia e, quando o primeiro verso for cantado, aperte o botão abaixo. Os outros versos acompanham.</p>
+    <button id="align" class="pri" style="margin-bottom:10px">O primeiro verso começou agora</button>
     <button id="even" style="margin-bottom:10px">Distribuir os versos igualmente</button>
     <div id="rows"></div>
     <button id="del">Remover música</button>
@@ -91,7 +106,7 @@ const $=s=>document.querySelector(s);
 let S={songs:[],sel:null},playing=false,tm=0,last=0;
 const A=new Audio();
 try{const d=JSON.parse(localStorage.getItem("lc1")||"null");if(d&&d.songs)S=d}catch(e){}
-const save=()=>{try{localStorage.setItem("lc1",JSON.stringify({sel:S.sel,songs:S.songs.map(s=>({id:s.id,title:s.title,artist:s.artist,art:s.art,lyrics:s.lyrics,times:s.times,audioUrl:/^https:/.test(s.audioUrl||"")?s.audioUrl:undefined}))}))}catch(e){}};
+const save=()=>{try{localStorage.setItem("lc1",JSON.stringify({sel:S.sel,songs:S.songs.map(s=>({id:s.id,title:s.title,artist:s.artist,art:s.art,lyrics:s.lyrics,times:s.times,lrcId:s.lrcId,audioUrl:/^https:\/\/[^/]*apple\.com/.test(s.audioUrl||"")?s.audioUrl:undefined}))}))}catch(e){}};
 const PH={title:"Título da música",artist:"Artista",lyrics:"Escreva aqui o verso\nque você quer mostrar",times:[]};
 const cur=()=>S.songs.find(s=>s.id===S.sel)||null;
 const view=()=>cur()||PH;
@@ -121,18 +136,55 @@ function renderRows(){const s=cur();if(!s)return;const box=$("#rows");s.times=s.
 function pick(id){S.sel=id;const s=cur();A.pause();playing=false;tm=0;
   if(s&&s.audioUrl)A.src=s.audioUrl;else A.removeAttribute("src");
   $("#ed").hidden=!s;$("#empty").hidden=S.songs.length>0;
-  if(s){$("#lyr").value=s.lyrics||"";$("#mp3s").textContent=s.audioUrl?(/^https:/.test(s.audioUrl)?"Prévia de 30 segundos do Apple Music carregada.":"Áudio carregado."):"Sem áudio: o cartão usa um relógio simples para a prévia.";renderRows()}
+  if(s){$("#et").value=s.title;$("#ea").value=s.artist||"";$("#elid").value=s.lrcId?"https://lrclib.net/tracks/"+s.lrcId:"";$("#eart").value="";$("#lyr").value=s.lyrics||"";$("#mp3s").textContent=s.audioUrl?(/^https:/.test(s.audioUrl)?"Prévia de 30 segundos do Apple Music carregada.":"Áudio carregado."):"Sem áudio: o cartão usa um relógio simples para a prévia.";renderRows()}
   renderList();drawCard();save()}
+function jsonp(url){return new Promise((res,rej)=>{const n="jp"+Math.random().toString(36).slice(2),s=document.createElement("script");
+ const end=()=>{clearTimeout(to);delete window[n];s.remove()};const to=setTimeout(()=>{end();rej(new Error("timeout"))},8000);
+ window[n]=d=>{end();res(d)};s.onerror=()=>{end();rej(new Error("net"))};s.src=url+"&callback="+n;document.head.appendChild(s)})}
+function parseLrc(x){return x.split("\n").map(l=>{const m=l.match(/^\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)$/);return m&&m[3]?{t:+m[1]*60+ +m[2],x:m[3]}:null}).filter(Boolean)}
+function applyPicks(s){const P=s.picks.map(i=>s.lrc[i]);s.lyrics=P.map(p=>p.x).join("\n");s.times=P.map(p=>Math.round((1+p.t-P[0].t)*10)/10);$("#lyr").value=s.lyrics;drawCard();renderRows();save()}
+function drawLrc(){const s=cur();if(!s||!s.lrc)return;s.picks=s.picks||[];
+ $("#lrc").replaceChildren(...s.lrc.map((l,i)=>{const b=document.createElement("button");b.className="lv";b.textContent=l.x;b.setAttribute("aria-pressed",s.picks.includes(i));
+  b.onclick=()=>{const k=s.picks.indexOf(i);if(k>=0)s.picks.splice(k,1);else if(s.picks.length<4)s.picks.push(i);s.picks.sort((a,b)=>a-b);applyPicks(s);drawLrc()};return b}))}
+const enc=encodeURIComponent;
+const parseId=x=>{const m=String(x).trim().match(/^(?:https?:\/\/lrclib\.net\/(?:tracks|api\/get)\/)?(\d+)\/?(?:[?#].*)?$/);return m?m[1]:null};
+function cropCover(f){return new Promise(ok=>{const r=new FileReader();r.onerror=()=>ok("");r.onload=()=>{const im=new Image();im.onerror=()=>ok("");im.onload=()=>{const c=document.createElement("canvas"),z=360;c.width=c.height=z;const m=Math.min(im.width,im.height);
+  c.getContext("2d").drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,z,z);ok(c.toDataURL("image/jpeg",.8))};im.src=r.result};r.readAsDataURL(f)})}
+async function getLyrics(s,auto){$("#lrc").replaceChildren();$("#lmsg").textContent="Buscando letra sincronizada no lrclib…";
+ try{let h=null;
+  if(s.lrcId){const r=await fetch("https://lrclib.net/api/get/"+s.lrcId);
+   if(!r.ok){$("#lmsg").textContent="Não achei a faixa "+s.lrcId+" no lrclib. Confira o link.";return}
+   h=await r.json();
+   if(!h.syncedLyrics){$("#lmsg").textContent="Essa faixa do lrclib não tem letra sincronizada. Digite o trecho abaixo.";return}}
+  else for(const q of ["track_name="+enc(s.title)+"&artist_name="+enc(s.artist||""),"q="+enc((s.title+" "+(s.artist||"")).trim())]){
+   const r=await fetch("https://lrclib.net/api/search?"+q);const j=r.ok?await r.json():[];h=j.find(x=>x.syncedLyrics);if(h)break}
+  if(!h){$("#lmsg").textContent="Não achei letra sincronizada para essa música. Cole o link da faixa do lrclib acima ou digite o trecho abaixo.";return}
+  s.lrc=parseLrc(h.syncedLyrics);if(cur()!==s)return;
+  if(auto&&s.lrc.length){s.picks=s.lrc.slice(0,4).map((_,i)=>i);applyPicks(s)}
+  $("#lmsg").textContent=(auto?"Letra sincronizada aplicada ("+h.trackName+", "+h.artistName+"). ":"")+"Toque nos versos que vão no cartão (até 4):";drawLrc()}
+ catch(e){$("#lmsg").textContent="Não consegui buscar a letra. Digite o trecho abaixo."}}
 async function find(){const q=$("#nt").value.trim();if(!q){$("#nt").focus();return}
- $("#msg").textContent="Buscando…";$("#res").replaceChildren();
- try{const r=await fetch("https://itunes.apple.com/search?media=music&entity=song&limit=6&country=BR&term="+encodeURIComponent(q));
-  const j=await r.json();const hits=j.results.filter(x=>x.previewUrl);
-  $("#msg").textContent=hits.length?"Escolha a versão certa:":"Nada encontrado. Tente incluir o nome do artista.";
-  $("#res").replaceChildren(...hits.map(x=>{const b=document.createElement("button");b.className="song";
-   const a=document.createElement("div");a.className="art";a.style.background="center/cover url("+x.artworkUrl100+")";
-   const d=document.createElement("div");d.innerHTML="<b></b><small></small>";d.firstChild.textContent=x.trackName;d.lastChild.textContent=x.artistName+", "+x.collectionName;
-   b.append(a,d);b.onclick=()=>{const s={id:Date.now()+"",title:x.trackName,artist:x.artistName,art:x.artworkUrl100.replace("100x100","600x600"),audioUrl:x.previewUrl,lyrics:"",times:[]};S.songs.push(s);$("#res").replaceChildren();$("#msg").textContent="";$("#nt").value="";pick(s.id)};return b}))}
- catch(e){$("#msg").textContent="A busca não funciona dentro do claude.ai. Baixe este arquivo e abra direto no navegador."}}
+ $("#msg").textContent="Buscando…";$("#res").replaceChildren();const E=encodeURIComponent(q);
+ const [a,d]=await Promise.allSettled([jsonp("https://itunes.apple.com/search?media=music&entity=song&limit=5&country=BR&term="+E),jsonp("https://api.deezer.com/search?limit=5&output=jsonp&q="+E)]);
+ const hits=[];
+ if(a.status==="fulfilled")(a.value.results||[]).filter(x=>x.previewUrl).forEach(x=>hits.push({src:"Apple Music",title:x.trackName,artist:x.artistName,album:x.collectionName,art:x.artworkUrl100.replace("100x100","600x600"),thumb:x.artworkUrl100,audio:x.previewUrl}));
+ if(d.status==="fulfilled")(d.value.data||[]).filter(x=>x.preview).forEach(x=>hits.push({src:"Deezer",title:x.title,artist:x.artist.name,album:x.album.title,art:x.album.cover_xl,thumb:x.album.cover_medium,audio:x.preview}));
+ if(!hits.length){$("#msg").textContent=(a.status==="rejected"&&d.status==="rejected")?"Sem conexão com o Apple Music e o Deezer. Abra o arquivo direto no navegador, fora do claude.ai.":"Nada encontrado. Tente incluir o nome do artista.";return}
+ $("#msg").textContent="Escolha a versão certa:";
+ $("#res").replaceChildren(...hits.map(x=>{const b=document.createElement("button");b.className="song";
+  const im=document.createElement("div");im.className="art";im.style.background="center/cover url("+x.thumb+")";
+  const dv=document.createElement("div");dv.innerHTML="<b></b><small></small>";dv.firstChild.textContent=x.title;dv.lastChild.textContent=x.artist+", "+x.album+" ("+x.src+")";
+  b.append(im,dv);b.onclick=()=>{const s={id:Date.now()+"",title:x.title,artist:x.artist,art:x.art,audioUrl:x.audio,lyrics:"",times:[]};S.songs.push(s);$("#res").replaceChildren();$("#msg").textContent="";$("#nt").value="";pick(s.id);getLyrics(s)};return b}))}
+$("#glyr").onclick=()=>{const s=cur();if(s)getLyrics(s)};
+$("#done").onclick=async()=>{const s=cur();if(!s)return;
+ const t=$("#et").value.trim();if(!t){$("#et").focus();return}
+ const raw=$("#elid").value.trim(),id=raw?parseId(raw):null;
+ if(raw&&!id){$("#lmsg").textContent="Não reconheci esse link. Use algo como https://lrclib.net/tracks/37789459.";$("#elid").focus();return}
+ if(s.lrcId!==(id||undefined))s.picks=[];
+ s.title=t;s.artist=$("#ea").value.trim();s.lrcId=id||undefined;
+ const f=$("#eart").files[0];if(f){const a=await cropCover(f);if(a)s.art=a;$("#eart").value=""}
+ renderList();drawCard();save();getLyrics(s,true)};
+$("#align").onclick=()=>{const s=cur();if(!s||typeof(s.times||[])[0]!=="number")return;const d=now()-s.times[0];s.times=s.times.map(x=>typeof x==="number"?Math.max(0,Math.round((x+d)*10)/10):x);renderRows();save();paint()};
 $("#find").onclick=find;$("#nt").onkeydown=e=>{if(e.key==="Enter")find()};
 $("#even").onclick=()=>{const s=cur();if(!s)return;const n=linesOf(s).length,d=Math.min(dur(),30)-2;s.times=Array.from({length:n},(_,i)=>Math.round((1+i*d/Math.max(n,1))*10)/10);renderRows();save();paint()};
 $("#add").onclick=()=>{const t=$("#nt").value.trim();if(!t){$("#nt").focus();return}
